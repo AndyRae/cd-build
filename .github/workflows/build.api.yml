@@ -24,7 +24,7 @@ jobs:
       - name: Get latest upstream release
         id: upstream
         run: |
-          TAG=$(gh api repos/${{ env.SOURCE_REPO_API }}/api/releases/latest --jq '.tag_name')
+          TAG=$(gh api repos/${{ env.SOURCE_REPO_API }}/releases/latest --jq '.tag_name')
           VERSION=${TAG#v}
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -96,7 +96,7 @@ jobs:
       - name: Get latest upstream release
         id: upstream
         run: |
-          TAG=$(gh api repos/${{ env.SOURCE_REPO_UI }}/ui/releases/latest --jq '.tag_name')
+          TAG=$(gh api repos/${{ env.SOURCE_REPO_UI }}/releases/latest --jq '.tag_name')
           VERSION=${TAG#v}
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
