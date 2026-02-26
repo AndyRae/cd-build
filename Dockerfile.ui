@@ -1,0 +1,36 @@
+# 1. Builder (amd64 only)
+FROM --platform=linux/amd64 node:24.12.0-alpine AS builder
+WORKDIR /app
+
+# Use upstream UI source (checked out at upstream-ui/ in CI)
+COPY upstream-ui/ .
+
+# Remove upstream's config so we don't have two 
+RUN rm -f next.config.ts next.config.js next.config.mjs
+
+# Override with our Next.js config (replaces upstream's)
+COPY next.config.js ./next.config.js
+
+# Install deps & build
+RUN npm ci
+RUN npm run build
+
+# 2. Runner (multi-arch)
+FROM node:24.12.0-alpine AS runner
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser --system --uid 1001 nextjs
+
+# Copy only what's needed for runtime
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.js ./next.config.js
+COPY --from=builder /app/constants ./constants
+
+USER nextjs
+
+CMD ["npm", "start"]

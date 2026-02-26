@@ -118,11 +118,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Checkout
+      - name: Checkout (this repo – for Dockerfile.ui)
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream UI source
         if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ env.SOURCE_REPO_UI }}
+          ref: ${{ steps.upstream.outputs.tag }}
+          path: upstream-ui
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
@@ -144,6 +150,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile.ui
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
