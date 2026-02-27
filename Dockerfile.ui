@@ -1,5 +1,5 @@
-# 1. Builder (amd64 only)
-FROM --platform=linux/amd64 node:24.12.0-alpine AS builder
+# 1. Builder
+FROM node:24.12.0-alpine AS builder
 WORKDIR /app
 
 # Use upstream UI source (checked out at upstream-ui/ in CI)
