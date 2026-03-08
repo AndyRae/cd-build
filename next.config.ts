@@ -1,8 +1,7 @@
 import createMDX from "@next/mdx";
-/** @type {import('next').NextConfig} */
+import type { NextConfig } from "next";
 
-const nextConfig = {
-  output: "standalone",
+const nextConfig: NextConfig = {
   logging: {
     fetches: {
       fullUrl: true,
@@ -12,6 +11,7 @@ const nextConfig = {
     authInterrupts: true,
   },
   transpilePackages: ["@faker-js/faker"],
+  output: "standalone",
 };
 
 const withMDX = createMDX({

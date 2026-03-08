@@ -6,13 +6,14 @@ WORKDIR /app
 COPY upstream-ui/ .
 
 # Remove upstream's config so we don't have two 
-RUN rm -f next.config.ts next.config.js next.config.mjs
+RUN rm -f next.config.ts
 
 # Override with our Next.js config (replaces upstream's)
-COPY next.config.js ./next.config.js
+COPY next.config.ts ./next.config.ts
 
 # Install deps & build
 RUN npm ci
+ENV NODE_ENV=production
 RUN npm run build
 
 # 2. Runner (multi-arch)
@@ -30,4 +31,9 @@ COPY --from=builder /app/public ./public
 
 USER nextjs
 
-CMD ["node", ".next/standalone/server.js"]
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+ENV NODE_ENV=production
+EXPOSE 3000
+
+CMD ["node", "server.js"]
