@@ -9,6 +9,7 @@ services:
       - DB_DATABASE=cd_api
       - DB_USERNAME=root
       - DB_PASSWORD=password
+      - COHORT_DISCOVER_NLP_SERVICE_BASE_URI=http://nlp:5001
     ports:
       - 8080:8080
     depends_on:
@@ -77,3 +78,65 @@ services:
       retries: 10
       start_period: 10s
 
+  # Bunny 
+  omop-db:
+    image: postgres:16
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: omop
+
+  omop-lite:
+    image: ghcr.io/health-informatics-uon/omop-lite
+    depends_on:
+      - omop-db
+    environment:
+      DB_PASSWORD: postgres
+      DB_NAME: omop
+      DB_HOST: omop-db
+      SYNTHETIC: true
+
+  availa-bunny:
+    image: ghcr.io/health-informatics-uon/hutch/bunny:1.6.0
+    environment:
+      DATASOURCE_DB_USERNAME: postgres
+      DATASOURCE_DB_PASSWORD: postgres
+      DATASOURCE_DB_DATABASE: omop
+      DATASOURCE_DB_DRIVERNAME: postgresql
+      DATASOURCE_DB_SCHEMA: public
+      DATASOURCE_DB_PORT: 5432
+      DATASOURCE_DB_HOST: omop-db
+      BUNNY_LOGGER_LEVEL: DEBUG
+      TASK_API_BASE_URL: http://api:8080/api/v1
+      TASK_API_USERNAME: ada604e0a5102c99e1cc989a97ae5da7cecd1edb01ca9d4b76be625dacad1107
+      TASK_API_PASSWORD: 00b261878aaf222f23becaec888b8b2907488bf3b4cfc5088482c68a841a6eb8
+      COLLECTION_ID: 00000000-0000-0000-0000-000000000000
+      TASK_API_ENFORCE_HTTPS: false
+    depends_on:
+      omop-lite:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+
+  distri-bunny:
+    image: ghcr.io/health-informatics-uon/hutch/bunny:1.6.0
+    environment:
+      DATASOURCE_DB_USERNAME: postgres
+      DATASOURCE_DB_PASSWORD: postgres
+      DATASOURCE_DB_DATABASE: omop
+      DATASOURCE_DB_DRIVERNAME: postgresql
+      DATASOURCE_DB_SCHEMA: public
+      DATASOURCE_DB_PORT: 5432
+      DATASOURCE_DB_HOST: omop-db
+      BUNNY_LOGGER_LEVEL: DEBUG
+      TASK_API_BASE_URL: http://api:8080/api/v1
+      TASK_API_USERNAME: ada604e0a5102c99e1cc989a97ae5da7cecd1edb01ca9d4b76be625dacad1107
+      TASK_API_PASSWORD: 00b261878aaf222f23becaec888b8b2907488bf3b4cfc5088482c68a841a6eb8
+      COLLECTION_ID: 00000000-0000-0000-0000-000000000000
+      TASK_API_ENFORCE_HTTPS: false
+    depends_on:
+      omop-lite:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
