@@ -36,8 +36,10 @@ jobs:
       - name: Check if image already exists
         id: check
         run: |
-          STATUS=$(gh api orgs/${{ github.repository_owner }}/packages/container/$(basename ${{ github.repository }}/api)/versions \
-            --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null || echo "0")
+          if ! STATUS=$(gh api "users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}%2Fapi/versions" \
+            --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null); then
+            STATUS="0"
+          fi
           if [ "$STATUS" != "0" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Image ${{ steps.upstream.outputs.version }} already exists, skipping"
@@ -108,8 +110,10 @@ jobs:
       - name: Check if image already exists
         id: check
         run: |
-          STATUS=$(gh api orgs/${{ github.repository_owner }}/packages/container/$(basename ${{ github.repository }}/ui)/versions \
-            --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null || echo "0")
+          if ! STATUS=$(gh api "users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}%2Fui/versions" \
+            --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null); then
+            STATUS="0"
+          fi
           if [ "$STATUS" != "0" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Image ${{ steps.upstream.outputs.version }} already exists, skipping"
@@ -185,8 +189,10 @@ jobs:
         - name: Check if image already exists
           id: check
           run: |
-            STATUS=$(gh api orgs/${{ github.repository_owner }}/packages/container/$(basename ${{ github.repository }}/nlp)/versions \
-              --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null || echo "0")
+            if ! STATUS=$(gh api "users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}%2Fnlp/versions" \
+              --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null); then
+              STATUS="0"
+            fi
             if [ "$STATUS" != "0" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
               echo "skip=true" >> "$GITHUB_OUTPUT"
               echo "Image ${{ steps.upstream.outputs.version }} already exists, skipping"
