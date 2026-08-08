@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/andyrae/cd-build/api
+    image: ghcr.io/andyrae/cd-build/api:1.12.0
     env_file: .env
     environment:
       - DB_CONNECTION=mysql
@@ -10,10 +10,14 @@ services:
       - DB_USERNAME=root
       - DB_PASSWORD=password
       - COHORT_DISCOVER_NLP_SERVICE_BASE_URI=http://nlp:5001
-      # 1 = migrate:fresh --seed on every container start (demo user, demo
-      # collection, Bunny host credentials). Fine for local/demo use, but
-      # note it drops and recreates all tables on every restart.
-      - REBUILD_DB=1
+      # 0 = plain `migrate` on container start (schema only, no seeding,
+      # existing data untouched). 1 = migrate:fresh --seed on EVERY start -
+      # avoid: it runs against the default connection's database (cd_api),
+      # which is also where the omop vocab tables live (DB_OMOP_* falls back
+      # to the same DB), so it wipes the OMOP concept/concept_ancestor data
+      # too, not just the app's own tables. See readme for the one-time
+      # seed commands to run instead after first boot.
+      - REBUILD_DB=0
     ports:
       - 8080:8080
     depends_on:
@@ -23,7 +27,7 @@ services:
         condition: service_healthy
 
   ui:
-    image: ghcr.io/andyrae/cd-build/ui
+    image: ghcr.io/andyrae/cd-build/ui:1.8.0
     env_file: .env
     environment:
       - NEXT_PUBLIC_LOGIN_URL=http://localhost:3000
@@ -39,7 +43,7 @@ services:
       - api
 
   nlp:
-    image: ghcr.io/andyrae/cd-build/nlp
+    image: ghcr.io/andyrae/cd-build/nlp:1.8.0
     env_file: .env
     environment:
       # NLP is a separate (Python) service and reads different var names
@@ -54,7 +58,8 @@ services:
     ports:
       - 5001:5001
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: mysql:8.0
@@ -66,7 +71,14 @@ services:
     volumes:
       - ./db/data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      # -h 127.0.0.1 (not "localhost") is deliberate: the mysql entrypoint's
+      # init/bootstrap server runs with --skip-networking (TCP disabled) but
+      # still answers on the unix socket, and "localhost" makes the mysql
+      # client prefer that socket - so a "localhost" ping falsely reports
+      # healthy mid-bootstrap, before the real server (and REBUILD_DB's
+      # migrate) can run. Forcing TCP via 127.0.0.1 only succeeds once the
+      # real server is actually up.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 10
