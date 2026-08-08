@@ -1,6 +1,13 @@
+# 0. Deps (cached independently of application source)
+FROM node:24.12.0-alpine AS deps
+WORKDIR /app
+COPY upstream-ui/package.json upstream-ui/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+
 # 1. Builder
 FROM node:24.12.0-alpine AS builder
 WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 
 # Use upstream UI source (checked out at upstream-ui/ in CI)
 COPY upstream-ui/ .
@@ -15,9 +22,8 @@ RUN rm -f src/actions/standalone/standaloneSignIn.ts
 COPY next.config.ts ./next.config.ts
 COPY standaloneSignIn.ts ./src/actions/standalone/standaloneSignIn.ts
 
-# Install deps & build
-RUN npm ci
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # 2. Runner (multi-arch)

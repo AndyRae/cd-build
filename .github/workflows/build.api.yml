@@ -11,11 +11,23 @@ env:
   SOURCE_REPO_NLP: HDRUK/cohort-discovery-service-nlp
 
 jobs:
-  check-and-build-api:
-    runs-on: ubuntu-latest
+  build-api:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      version: ${{ steps.upstream.outputs.version }}
+      skip: ${{ steps.check.outputs.skip }}
 
     steps:
       - name: Set image name
@@ -55,8 +67,11 @@ jobs:
         with:
           repository: ${{ env.SOURCE_REPO_API }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - name: Set platform pair
+        if: steps.check.outputs.skip != 'true'
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.skip != 'true'
@@ -70,26 +85,88 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push by digest
         if: steps.check.outputs.skip != 'true'
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.version }}
-            ${{ steps.image.outputs.name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=api-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=api-${{ env.PLATFORM_PAIR }}
           secrets: |
             github_token=${{ secrets.GITHUB_TOKEN }}
-  
-  check-and-build-ui:
-    runs-on: ubuntu-latest
+
+      - name: Export digest
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-api-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-api:
+    needs: build-api
+    if: needs.build-api.outputs.skip != 'true'
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-api-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest list
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ needs.build-api.outputs.image }}
+          VERSION: ${{ needs.build-api.outputs.version }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
+
+  build-ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      version: ${{ steps.upstream.outputs.version }}
+      skip: ${{ steps.check.outputs.skip }}
 
     steps:
       - name: Set image name
@@ -135,8 +212,11 @@ jobs:
           ref: ${{ steps.upstream.outputs.tag }}
           path: upstream-ui
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - name: Set platform pair
+        if: steps.check.outputs.skip != 'true'
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.skip != 'true'
@@ -150,90 +230,205 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push by digest
         if: steps.check.outputs.skip != 'true'
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.ui
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.version }}
-            ${{ steps.image.outputs.name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=ui-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=ui-${{ env.PLATFORM_PAIR }}
 
-  check-and-build-nlp:
-      runs-on: ubuntu-latest
-      permissions:
-        contents: read
-        packages: write
+      - name: Export digest
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
-      steps:
-        - name: Set image name
-          id: image
-          run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/nlp" >> "$GITHUB_OUTPUT"
+      - name: Upload digest
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-ui-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
-        - name: Get latest upstream release
-          id: upstream
-          run: |
-            TAG=$(gh api repos/${{ env.SOURCE_REPO_NLP }}/releases/latest --jq '.tag_name')
-            VERSION=${TAG#v}
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "Upstream release: $TAG ($VERSION)"
-          env:
-            GH_TOKEN: ${{ github.token }}
+  merge-ui:
+    needs: build-ui
+    if: needs.build-ui.outputs.skip != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-ui-*
+          merge-multiple: true
 
-        - name: Check if image already exists
-          id: check
-          run: |
-            if ! STATUS=$(gh api "users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}%2Fnlp/versions" \
-              --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null); then
-              STATUS="0"
-            fi
-            if [ "$STATUS" != "0" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Image ${{ steps.upstream.outputs.version }} already exists, skipping"
-            else
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-            fi
-          env:
-            GH_TOKEN: ${{ github.token }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-        - name: Checkout
-          if: steps.check.outputs.skip != 'true'
-          uses: actions/checkout@v4
-          with:
-            repository: ${{ env.SOURCE_REPO_NLP }}
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-        - name: Set up QEMU
-          uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - name: Create and push manifest list
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ needs.build-ui.outputs.image }}
+          VERSION: ${{ needs.build-ui.outputs.version }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
 
-        - name: Set up Docker Buildx
-          if: steps.check.outputs.skip != 'true'
-          uses: docker/setup-buildx-action@v3
+  build-nlp:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      version: ${{ steps.upstream.outputs.version }}
+      skip: ${{ steps.check.outputs.skip }}
 
-        - name: Log in to GHCR
-          if: steps.check.outputs.skip != 'true'
-          uses: docker/login-action@v3
-          with:
-            registry: ghcr.io
-            username: ${{ github.actor }}
-            password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Set image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/nlp" >> "$GITHUB_OUTPUT"
 
-        - name: Build and push
-          if: steps.check.outputs.skip != 'true'
-          uses: docker/build-push-action@v6
-          with:
-            context: .
-            push: true
-            platforms: linux/amd64,linux/arm64
-            tags: |
-              ${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.version }}
-              ${{ steps.image.outputs.name }}:latest
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
-            secrets: |
-              github_token=${{ secrets.GITHUB_TOKEN }}
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          TAG=$(gh api repos/${{ env.SOURCE_REPO_NLP }}/releases/latest --jq '.tag_name')
+          VERSION=${TAG#v}
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Upstream release: $TAG ($VERSION)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check if image already exists
+        id: check
+        run: |
+          if ! STATUS=$(gh api "users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}%2Fnlp/versions" \
+            --jq "[.[] | select(.metadata.container.tags[] == \"${{ steps.upstream.outputs.version }}\")] | length" 2>/dev/null); then
+            STATUS="0"
+          fi
+          if [ "$STATUS" != "0" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Image ${{ steps.upstream.outputs.version }} already exists, skipping"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO_NLP }}
+
+      - name: Set platform pair
+        if: steps.check.outputs.skip != 'true'
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.check.outputs.skip != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        if: steps.check.outputs.skip != 'true'
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=nlp-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=nlp-${{ env.PLATFORM_PAIR }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export digest
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-nlp-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-nlp:
+    needs: build-nlp
+    if: needs.build-nlp.outputs.skip != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-nlp-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest list
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ needs.build-nlp.outputs.image }}
+          VERSION: ${{ needs.build-nlp.outputs.version }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
