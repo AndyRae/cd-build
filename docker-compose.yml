@@ -10,6 +10,10 @@ services:
       - DB_USERNAME=root
       - DB_PASSWORD=password
       - COHORT_DISCOVER_NLP_SERVICE_BASE_URI=http://nlp:5001
+      # 1 = migrate:fresh --seed on every container start (demo user, demo
+      # collection, Bunny host credentials). Fine for local/demo use, but
+      # note it drops and recreates all tables on every restart.
+      - REBUILD_DB=1
     ports:
       - 8080:8080
     depends_on:
@@ -38,11 +42,14 @@ services:
     image: ghcr.io/andyrae/cd-build/nlp
     env_file: .env
     environment:
+      # NLP is a separate (Python) service and reads different var names
+      # to the Laravel API - DB_NAME/DB_USER/DB_PASS, not
+      # DB_DATABASE/DB_USERNAME/DB_PASSWORD. Same underlying MySQL database.
       - DB_HOST=db
       - DB_PORT=3306
-      - DB_DATABASE=cd_api
-      - DB_USERNAME=root
-      - DB_PASSWORD=password
+      - DB_NAME=cd_api
+      - DB_USER=root
+      - DB_PASS=password
       - APP_ENV=development
     ports:
       - 5001:5001
@@ -108,6 +115,7 @@ services:
       DATASOURCE_DB_PORT: 5432
       DATASOURCE_DB_HOST: omop-db
       BUNNY_LOGGER_LEVEL: DEBUG
+      TASK_API_TYPE: a
       TASK_API_BASE_URL: http://api:8080/api/v1
       TASK_API_USERNAME: ada604e0a5102c99e1cc989a97ae5da7cecd1edb01ca9d4b76be625dacad1107
       TASK_API_PASSWORD: 00b261878aaf222f23becaec888b8b2907488bf3b4cfc5088482c68a841a6eb8
@@ -130,6 +138,7 @@ services:
       DATASOURCE_DB_PORT: 5432
       DATASOURCE_DB_HOST: omop-db
       BUNNY_LOGGER_LEVEL: DEBUG
+      TASK_API_TYPE: b
       TASK_API_BASE_URL: http://api:8080/api/v1
       TASK_API_USERNAME: ada604e0a5102c99e1cc989a97ae5da7cecd1edb01ca9d4b76be625dacad1107
       TASK_API_PASSWORD: 00b261878aaf222f23becaec888b8b2907488bf3b4cfc5088482c68a841a6eb8

@@ -5,13 +5,15 @@ WORKDIR /app
 # Use upstream UI source (checked out at upstream-ui/ in CI)
 COPY upstream-ui/ .
 
-# Remove upstream's config + standaloneSignIn so we don't have two 
+# Remove upstream's config + standaloneSignIn so we don't have two
+# (upstream ships this as .ts, not .tsx - match the real filename or the
+# rm is a no-op and both files end up coexisting in the build)
 RUN rm -f next.config.ts
-RUN rm -f src/actions/standalone/standaloneSignIn.tsx
+RUN rm -f src/actions/standalone/standaloneSignIn.ts
 
 # Override with our Next.js config (replaces upstream's) + standaloneSignIn
 COPY next.config.ts ./next.config.ts
-COPY standaloneSignIn.tsx ./src/actions/standalone/standaloneSignIn.tsx
+COPY standaloneSignIn.ts ./src/actions/standalone/standaloneSignIn.ts
 
 # Install deps & build
 RUN npm ci

@@ -31,7 +31,12 @@ const standaloneSignIn = async (payload: SignInPost): Promise<boolean> => {
 
     const h = await headers();
     const requestNow = h?.get("x-request-now");
-    const now = requestNow !== null ? Math.floor(Number(requestNow)) : 0;
+    // Fall back to server clock (rather than epoch 0) when the header is
+    // missing, so maxAge doesn't come out as ~decades.
+    const now =
+      requestNow !== null
+        ? Math.floor(Number(requestNow))
+        : Math.floor(Date.now() / 1000);
     const skew = 30;
 
     const maxAge = exp ? Math.max(0, exp - now - skew) : 60 * 60;
