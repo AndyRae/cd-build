@@ -10,16 +10,22 @@ Runs Cohort Discovery Service components:
 - MySQL
 - Redis
 
-And Bunny:
+And a data node:
 
-- OMOP DB
-- OMOP-Lite
+- OMOP CDM Postgres
+- OMOP-Lite (populates with synthetic data)
 - Bunny Availability
 - Bunny Distribution
 
+## Build
+
+CI (`.github/workflows/build.api.yml`) checks daily for a new upstream release of each source repo and, if found, builds and publishes a matching image to GHCR.
+
+The UI build is pulled out into its own step (`frontend/`), patching the upstream build to work around [HDRUK/cohort-discovery-service-web#246](https://github.com/HDRUK/cohort-discovery-service-web/issues/246) and [#245](https://github.com/HDRUK/cohort-discovery-service-web/issues/245).
+
 ## Run
 
-`mv example.env .env`
+`cp example.env .env`
 
 `docker compose up`
 
@@ -45,9 +51,11 @@ docker compose exec api php artisan db:seed --class MinimalOmopSeeder --database
 
 ## Use
 
+Login:
 ```bash
 demouser: "demo.user@domain.com"
 demopass: "d3m0User_!"
 ```
 
 Use the `COVID-19 Antibody CKD Dataset` to test queries.
+
