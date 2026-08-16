@@ -200,7 +200,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Checkout (this repo – for Dockerfile.ui)
+      - name: Checkout (this repo – for frontend/Dockerfile.ui)
         if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
 
@@ -210,7 +210,7 @@ jobs:
         with:
           repository: ${{ env.SOURCE_REPO_UI }}
           ref: ${{ steps.upstream.outputs.tag }}
-          path: upstream-ui
+          path: frontend/upstream-ui
 
       - name: Set platform pair
         if: steps.check.outputs.skip != 'true'
@@ -235,8 +235,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile.ui
+          context: ./frontend
+          file: ./frontend/Dockerfile.ui
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=ui-${{ env.PLATFORM_PAIR }}
