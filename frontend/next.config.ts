@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     authInterrupts: true,
+    // Mirrors upstream v1.11.2. Next 16.4 defaults this to true, which
+    // type-checks the whole project (incl. test files that don't compile).
+    useTypeScriptCli: false,
   },
   transpilePackages: ["@faker-js/faker"],
   output: "standalone",
