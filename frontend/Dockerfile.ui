@@ -12,15 +12,10 @@ COPY --from=deps /app/node_modules ./node_modules
 # Use upstream UI source (checked out at upstream-ui/ in CI)
 COPY upstream-ui/ .
 
-# Remove upstream's config + standaloneSignIn so we don't have two
-# (upstream ships this as .ts, not .tsx - match the real filename or the
-# rm is a no-op and both files end up coexisting in the build)
-RUN rm -f next.config.ts
-RUN rm -f src/actions/standalone/standaloneSignIn.ts
-
-# Override with our Next.js config (replaces upstream's) + standaloneSignIn
-COPY next.config.ts ./next.config.ts
-COPY standaloneSignIn.ts ./src/actions/standalone/standaloneSignIn.ts
+# Patch upstream in place (standalone output + opt-in secure cookies).
+# Fails the build if an upstream pattern it relies on has moved.
+COPY patch-upstream.sh /tmp/patch-upstream.sh
+RUN sh /tmp/patch-upstream.sh
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

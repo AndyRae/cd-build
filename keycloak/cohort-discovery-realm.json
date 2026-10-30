@@ -1,0 +1,61 @@
+{
+  "realm": "cohort-discovery",
+  "displayName": "Cohort Discovery (local demo)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "clients": [
+    {
+      "clientId": "cohort-discovery",
+      "name": "Cohort Discovery API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "cohort-discovery-dev-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8080/api/auth/sso/default/callback"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "demo.user",
+      "email": "demo.user@domain.com",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "d3m0User_!", "temporary": false }]
+    },
+    {
+      "username": "demo.researcher",
+      "email": "demo.researcher@domain.com",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "Researcher",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "d3m0User_!", "temporary": false }]
+    },
+    {
+      "username": "new.user",
+      "email": "new.user@domain.com",
+      "emailVerified": true,
+      "firstName": "New",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "d3m0User_!", "temporary": false }]
+    }
+  ]
+}

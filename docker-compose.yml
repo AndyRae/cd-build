@@ -1,6 +1,8 @@
 services:
   api:
-    image: ghcr.io/andyrae/cd-build/api:1.12.0
+    # :dev = upstream dev branch - OIDC/SSO is not in a release yet
+    # (API <= v1.16.0, web <= v1.11.2). Pin to a version once it ships.
+    image: ghcr.io/andyrae/cd-build/api:dev
     env_file: .env
     environment:
       - DB_CONNECTION=mysql
@@ -15,35 +17,162 @@ services:
       # avoid: it runs against the default connection's database (cd_api),
       # which is also where the omop vocab tables live (DB_OMOP_* falls back
       # to the same DB), so it wipes the OMOP concept/concept_ancestor data
-      # too, not just the app's own tables. See readme for the one-time
-      # seed commands to run instead after first boot.
+      # too, not just the app's own tables. The `seed` service below does
+      # the one-time seeding instead.
       - REBUILD_DB=0
-    ports:
-      - 8080:8080
+      # OIDC single sign-on against the bundled Keycloak (password login
+      # keeps working alongside it). The provider slug is "default".
+      - SSO_ENABLED=true
+      - SSO_FRONTEND_CALLBACK_URL=http://localhost:3000/auth/sso/callback
+      - SSO_FRONTEND_ERROR_URL=http://localhost:3000/auth/sso/error
+      - SSO_FRONTEND_LOGIN_URL=http://localhost:3000/login
+      - SSO_DEFAULT_ENABLED=true
+      - SSO_DEFAULT_LABEL=Keycloak
+      # Must be the browser-facing URL: it has to match the token's `iss`,
+      # and the API rejects discovered endpoints on any other origin. api-net
+      # makes it reachable from in here.
+      - SSO_DEFAULT_ISSUER=http://localhost:8180/realms/cohort-discovery
+      - SSO_DEFAULT_CLIENT_ID=cohort-discovery
+      - SSO_DEFAULT_CLIENT_SECRET=cohort-discovery-dev-secret
+      # Pinned rather than derived from the request host, so it always
+      # matches the redirect URI registered in the realm import.
+      - SSO_DEFAULT_REDIRECT_URI=http://localhost:8080/api/auth/sso/default/callback
+      # SSO caches discovery/JWKS for an hour; keep it short so a Keycloak
+      # restart (new signing keys) doesn't break logins.
+      - SSO_DISCOVERY_CACHE_TTL_SECONDS=60
+      - SSO_JWKS_CACHE_TTL_SECONDS=60
+    # Network namespace (and the 8080 publish, and the `api` hostname) is
+    # owned by api-net - see there.
+    network_mode: service:api-net
     depends_on:
+      api-net:
+        condition: service_started
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # One-shot first-run seeding: demo users/custodian/collection (which the
+  # Bunny credentials below match) and the minimal OMOP vocabulary. Each
+  # step is skipped when its data already exists, so this is a no-op on
+  # every later `up` and safe against an existing ./db/data.
+  seed:
+    image: ghcr.io/andyrae/cd-build/api:dev
+    env_file: .env
+    environment:
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=cd_api
+      - DB_USERNAME=root
+      - DB_PASSWORD=password
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        cd /var/www
+        # --skip-ssl: the image's MariaDB client rejects MySQL's self-signed
+        # cert. Counts are assigned on their own line so a failed query
+        # aborts (sh -e) instead of reading as "already seeded".
+        q() { MYSQL_PWD="$$DB_PASSWORD" mysql --skip-ssl -h "$$DB_HOST" -u "$$DB_USERNAME" -N -s "$$DB_DATABASE" -e "$$1"; }
+        users=$$(q "SELECT COUNT(*) FROM users WHERE email = '$${DEMO_USER_EMAIL:-demo.user@domain.com}'")
+        if [ "$$users" = "0" ]; then
+          php artisan db:seed --class DevDatabaseSeeder --force
+        else
+          echo "seed: demo data already present, skipping DevDatabaseSeeder"
+        fi
+        php artisan migrate --database omop --path database/migrations_omop --force
+        concepts=$$(q "SELECT COUNT(*) FROM concept")
+        if [ "$$concepts" = "0" ]; then
+          php artisan db:seed --class MinimalOmopSeeder --database omop --force
+        else
+          echo "seed: OMOP concepts already present, skipping MinimalOmopSeeder"
+        fi
+    depends_on:
+      # healthy = migrations have run and Octane is serving
+      api:
+        condition: service_healthy
+
+  # Owns the api's network namespace (api joins it, pod-style) and forwards
+  # localhost:8180 in there to Keycloak, because the browser and the API
+  # must reach Keycloak at the same URL (see SSO_DEFAULT_ISSUER). A
+  # `keycloak.localhost` alias doesn't work instead: libcurl (used by PHP)
+  # hard-wires *.localhost to 127.0.0.1 without asking DNS.
+  # It owns the namespace, rather than joining api's, so api can be
+  # restarted/recreated on its own without breaking the forward.
+  api-net:
+    image: alpine/socat:1.8.1.3
+    command: tcp-listen:8180,fork,reuseaddr tcp-connect:keycloak:8180
+    ports:
+      - 8080:8080
+    networks:
+      default:
+        aliases:
+          - api
 
   ui:
-    image: ghcr.io/andyrae/cd-build/ui:1.8.0
+    image: ghcr.io/andyrae/cd-build/ui:dev
     env_file: .env
     environment:
       - NEXT_PUBLIC_LOGIN_URL=http://localhost:3000
       - NEXT_PUBLIC_TASK_URL=http://localhost:8080/api/v1
-      - API_BASE_URL=http://api:8080
+      # localhost, not api:8080: the UI also hands this URL to the browser
+      # (the SSO button's href is built by the API from the request host,
+      # and logout redirects to {API_BASE_URL}/api/auth/sso/...). ui-net
+      # makes it reachable from in here.
+      - API_BASE_URL=http://localhost:8080
       - APPLICATION_MODE=standalone
       - NEXT_PUBLIC_USE_EXAMPLE_QUERY=true
       - NEXT_PUBLIC_USE_DEBUG_LOGS=true
       - SECURE_COOKIES=false
-    ports:
-      - 3000:3000
+    network_mode: service:ui-net
     depends_on:
+      - ui-net
       - api
 
+  # Owns the ui's network namespace (like api-net) and forwards
+  # localhost:8080 in there to the API (see API_BASE_URL above).
+  ui-net:
+    image: alpine/socat:1.8.1.3
+    command: tcp-listen:8080,fork,reuseaddr tcp-connect:api:8080
+    ports:
+      - 3000:3000
+
+  # OIDC identity provider. Dev mode with an in-container H2 database: the
+  # realm (client + demo users) is imported from ./keycloak on every fresh
+  # container, so `docker compose down` resets it. Admin console:
+  # http://localhost:8180/admin (admin / admin).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Listen on 8180 inside the container too, so http://localhost:8180
+      # means the same thing to the browser and (via the sidecar) the API.
+      KC_HTTP_PORT: 8180
+      KC_HOSTNAME: http://localhost:8180
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - 8180:8180
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # The image has no curl/wget; probe the management port with bash.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
   nlp:
-    image: ghcr.io/andyrae/cd-build/nlp:1.8.0
+    image: ghcr.io/andyrae/cd-build/nlp:1.9.1
     env_file: .env
     environment:
       # NLP is a separate (Python) service and reads different var names
@@ -136,8 +265,8 @@ services:
     depends_on:
       omop-lite:
         condition: service_completed_successfully
-      api:
-        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
 
   distri-bunny:
     image: ghcr.io/health-informatics-uon/hutch/bunny:1.8.1
@@ -159,5 +288,5 @@ services:
     depends_on:
       omop-lite:
         condition: service_completed_successfully
-      api:
-        condition: service_healthy
+      seed:
+        condition: service_completed_successfully

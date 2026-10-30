@@ -4,6 +4,14 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: >-
+          Upstream branch or tag to build instead of the latest release
+          (e.g. "dev"). The image is tagged with the ref name and :latest is
+          left alone. Leave empty for the latest release.
+        required: false
+        default: ""
 
 env:
   SOURCE_REPO_API: HDRUK/cohort-discovery-service-api
@@ -27,6 +35,7 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.name }}
       version: ${{ steps.upstream.outputs.version }}
+      is_ref: ${{ steps.upstream.outputs.is_ref }}
       skip: ${{ steps.check.outputs.skip }}
 
     steps:
@@ -37,13 +46,21 @@ jobs:
       - name: Get latest upstream release
         id: upstream
         run: |
-          TAG=$(gh api repos/${{ env.SOURCE_REPO_API }}/releases/latest --jq '.tag_name')
-          VERSION=${TAG#v}
+          if [ -n "$INPUT_REF" ]; then
+            TAG=$INPUT_REF
+            VERSION=$(echo "$INPUT_REF" | tr '/' '-')
+            echo "is_ref=true" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh api repos/${{ env.SOURCE_REPO_API }}/releases/latest --jq '.tag_name')
+            VERSION=${TAG#v}
+            echo "is_ref=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Upstream release: $TAG ($VERSION)"
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
 
       - name: Check if image already exists
         id: check
@@ -66,6 +83,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.SOURCE_REPO_API }}
+          ref: ${{ steps.upstream.outputs.tag }}
 
       - name: Set platform pair
         if: steps.check.outputs.skip != 'true'
@@ -144,10 +162,12 @@ jobs:
         env:
           IMAGE: ${{ needs.build-api.outputs.image }}
           VERSION: ${{ needs.build-api.outputs.version }}
+          IS_REF: ${{ needs.build-api.outputs.is_ref }}
         run: |
-          docker buildx imagetools create \
-            -t "$IMAGE:$VERSION" \
-            -t "$IMAGE:latest" \
+          # A branch/tag build (inputs.ref) only gets its own tag, never :latest
+          tags=(-t "$IMAGE:$VERSION")
+          [ "$IS_REF" = "true" ] || tags+=(-t "$IMAGE:latest")
+          docker buildx imagetools create "${tags[@]}" \
             $(printf "$IMAGE@sha256:%s " *)
 
   build-ui:
@@ -166,6 +186,7 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.name }}
       version: ${{ steps.upstream.outputs.version }}
+      is_ref: ${{ steps.upstream.outputs.is_ref }}
       skip: ${{ steps.check.outputs.skip }}
 
     steps:
@@ -176,13 +197,21 @@ jobs:
       - name: Get latest upstream release
         id: upstream
         run: |
-          TAG=$(gh api repos/${{ env.SOURCE_REPO_UI }}/releases/latest --jq '.tag_name')
-          VERSION=${TAG#v}
+          if [ -n "$INPUT_REF" ]; then
+            TAG=$INPUT_REF
+            VERSION=$(echo "$INPUT_REF" | tr '/' '-')
+            echo "is_ref=true" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh api repos/${{ env.SOURCE_REPO_UI }}/releases/latest --jq '.tag_name')
+            VERSION=${TAG#v}
+            echo "is_ref=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Upstream release: $TAG ($VERSION)"
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
 
       - name: Check if image already exists
         id: check
@@ -288,10 +317,12 @@ jobs:
         env:
           IMAGE: ${{ needs.build-ui.outputs.image }}
           VERSION: ${{ needs.build-ui.outputs.version }}
+          IS_REF: ${{ needs.build-ui.outputs.is_ref }}
         run: |
-          docker buildx imagetools create \
-            -t "$IMAGE:$VERSION" \
-            -t "$IMAGE:latest" \
+          # A branch/tag build (inputs.ref) only gets its own tag, never :latest
+          tags=(-t "$IMAGE:$VERSION")
+          [ "$IS_REF" = "true" ] || tags+=(-t "$IMAGE:latest")
+          docker buildx imagetools create "${tags[@]}" \
             $(printf "$IMAGE@sha256:%s " *)
 
   build-nlp:
@@ -310,6 +341,7 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.name }}
       version: ${{ steps.upstream.outputs.version }}
+      is_ref: ${{ steps.upstream.outputs.is_ref }}
       skip: ${{ steps.check.outputs.skip }}
 
     steps:
@@ -320,13 +352,21 @@ jobs:
       - name: Get latest upstream release
         id: upstream
         run: |
-          TAG=$(gh api repos/${{ env.SOURCE_REPO_NLP }}/releases/latest --jq '.tag_name')
-          VERSION=${TAG#v}
+          if [ -n "$INPUT_REF" ]; then
+            TAG=$INPUT_REF
+            VERSION=$(echo "$INPUT_REF" | tr '/' '-')
+            echo "is_ref=true" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh api repos/${{ env.SOURCE_REPO_NLP }}/releases/latest --jq '.tag_name')
+            VERSION=${TAG#v}
+            echo "is_ref=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Upstream release: $TAG ($VERSION)"
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
 
       - name: Check if image already exists
         id: check
@@ -349,6 +389,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.SOURCE_REPO_NLP }}
+          ref: ${{ steps.upstream.outputs.tag }}
 
       - name: Set platform pair
         if: steps.check.outputs.skip != 'true'
@@ -427,8 +468,10 @@ jobs:
         env:
           IMAGE: ${{ needs.build-nlp.outputs.image }}
           VERSION: ${{ needs.build-nlp.outputs.version }}
+          IS_REF: ${{ needs.build-nlp.outputs.is_ref }}
         run: |
-          docker buildx imagetools create \
-            -t "$IMAGE:$VERSION" \
-            -t "$IMAGE:latest" \
+          # A branch/tag build (inputs.ref) only gets its own tag, never :latest
+          tags=(-t "$IMAGE:$VERSION")
+          [ "$IS_REF" = "true" ] || tags+=(-t "$IMAGE:latest")
+          docker buildx imagetools create "${tags[@]}" \
             $(printf "$IMAGE@sha256:%s " *)
