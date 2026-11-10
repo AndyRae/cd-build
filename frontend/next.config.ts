@@ -1,26 +1,14 @@
-import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
+// Upstream's next.config.ts, renamed by Dockerfile.ui. Everything it sets is
+// kept; this only adds standalone output (HDRUK/cohort-discovery-service-web#246).
+import upstreamConfig from "./next.config.upstream";
 
 const nextConfig: NextConfig = {
-  logging: {
-    fetches: {
-      fullUrl: true,
-    },
-  },
-  experimental: {
-    authInterrupts: true,
-    // Mirrors upstream v1.11.2. Next 16.4 defaults this to true, which
-    // type-checks the whole project (incl. test files that don't compile).
-    useTypeScriptCli: false,
-  },
-  transpilePackages: ["@faker-js/faker"],
+  ...upstreamConfig,
   output: "standalone",
+  // Upstream traces from the parent dir, which nests server.js under
+  // .next/standalone/<dir>/ instead of the root the runner stage copies.
+  outputFileTracingRoot: __dirname,
 };
 
-const withMDX = createMDX({
-  extension: /\.(md|mdx)$/,
-  options: {},
-  // Add markdown plugins here, as desired
-});
-
-export default withMDX(nextConfig);
+export default nextConfig;
