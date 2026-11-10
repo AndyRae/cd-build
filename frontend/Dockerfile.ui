@@ -12,10 +12,16 @@ COPY --from=deps /app/node_modules ./node_modules
 # Use upstream UI source (checked out at upstream-ui/ in CI)
 COPY upstream-ui/ .
 
-# Patch upstream in place (standalone output + opt-in secure cookies).
-# Fails the build if an upstream pattern it relies on has moved.
-COPY patch-upstream.sh /tmp/patch-upstream.sh
-RUN sh /tmp/patch-upstream.sh
+# Our next.config.ts wraps upstream's (kept as next.config.upstream.ts) to
+# add standalone output.
+RUN mv next.config.ts next.config.upstream.ts
+COPY next.config.ts ./next.config.ts
+
+# Our authCookie.ts makes the cookie's secure flag opt-in via SECURE_COOKIES.
+# The test fails the build if upstream moves the file, rather than our copy
+# being silently unused.
+RUN test -f src/lib/authCookie.ts
+COPY authCookie.ts ./src/lib/authCookie.ts
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
