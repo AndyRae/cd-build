@@ -24,9 +24,9 @@ CI (`.github/workflows/build.api.yml`) checks daily for a new upstream release o
 
 The UI build is pulled out into its own step (`frontend/`), patching the upstream build to work around [HDRUK/cohort-discovery-service-web#246](https://github.com/HDRUK/cohort-discovery-service-web/issues/246) and [#245](https://github.com/HDRUK/cohort-discovery-service-web/issues/245).
 
-To build an upstream branch instead of the latest release (OIDC/SSO is only on
-upstream `dev` so far), run the workflow manually with a `ref`. The images are
-tagged with the ref name (`:dev`) and `:latest` is left alone:
+To build an upstream branch instead of the latest release, run the workflow
+manually with a `ref`. The images are tagged with the ref name (`:dev`) and
+`:latest` is left alone:
 
 ```bash
 gh workflow run build.api.yml -f ref=dev
