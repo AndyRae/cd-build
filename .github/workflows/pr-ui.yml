@@ -1,0 +1,52 @@
+name: Check UI image build
+
+# Builds (without pushing) the UI image against the latest upstream release,
+# so breakage in the vendored frontend/ files shows up on the PR rather than
+# in the nightly build.
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/pr-ui.yml"
+
+env:
+  SOURCE_REPO_UI: HDRUK/cohort-discovery-service-web
+
+permissions:
+  contents: read
+
+jobs:
+  build-ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          TAG=$(gh api repos/${{ env.SOURCE_REPO_UI }}/releases/latest --jq '.tag_name')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Upstream release: $TAG"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout (this repo – for frontend/Dockerfile.ui)
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream UI source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO_UI }}
+          ref: ${{ steps.upstream.outputs.tag }}
+          path: frontend/upstream-ui
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.ui
+          platforms: linux/amd64
+          push: false
+          # Read the nightly build's cache but don't write to it
+          cache-from: type=gha,scope=ui-linux-amd64

@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # Image tags in docker-compose.yml, including our own cd-build images once
+  # CI publishes a new upstream release.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cd-build:
+        patterns:
+          - "*cd-build/*"
+    ignore:
+      # Both keep data in bind-mounted dirs; a major bump is a migration.
+      - dependency-name: "mysql"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "redis"
+        update-types: ["version-update:semver-major"]
+
+  # Node base image in frontend/Dockerfile.ui. Majors are ignored so odd
+  # (non-LTS) releases aren't proposed; bump to the next LTS by hand.
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
