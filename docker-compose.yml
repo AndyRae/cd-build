@@ -245,7 +245,7 @@ services:
       SYNTHETIC: true
 
   availa-bunny:
-    image: ghcr.io/health-informatics-uon/hutch/bunny:1.8.1
+    image: ghcr.io/health-informatics-uon/hutch/bunny:1.9.9
     environment:
       DATASOURCE_DB_USERNAME: postgres
       DATASOURCE_DB_PASSWORD: postgres
@@ -268,7 +268,7 @@ services:
         condition: service_completed_successfully
 
   distri-bunny:
-    image: ghcr.io/health-informatics-uon/hutch/bunny:1.8.1
+    image: ghcr.io/health-informatics-uon/hutch/bunny:1.9.9
     environment:
       DATASOURCE_DB_USERNAME: postgres
       DATASOURCE_DB_PASSWORD: postgres
