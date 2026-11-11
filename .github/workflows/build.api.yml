@@ -167,8 +167,9 @@ jobs:
           # A branch/tag build (inputs.ref) only gets its own tag, never :latest
           tags=(-t "$IMAGE:$VERSION")
           [ "$IS_REF" = "true" ] || tags+=(-t "$IMAGE:latest")
-          docker buildx imagetools create "${tags[@]}" \
-            $(printf "$IMAGE@sha256:%s " *)
+          refs=()
+          for digest in *; do refs+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
 
   build-ui:
     strategy:
@@ -322,8 +323,9 @@ jobs:
           # A branch/tag build (inputs.ref) only gets its own tag, never :latest
           tags=(-t "$IMAGE:$VERSION")
           [ "$IS_REF" = "true" ] || tags+=(-t "$IMAGE:latest")
-          docker buildx imagetools create "${tags[@]}" \
-            $(printf "$IMAGE@sha256:%s " *)
+          refs=()
+          for digest in *; do refs+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
 
   build-nlp:
     strategy:
@@ -473,5 +475,6 @@ jobs:
           # A branch/tag build (inputs.ref) only gets its own tag, never :latest
           tags=(-t "$IMAGE:$VERSION")
           [ "$IS_REF" = "true" ] || tags+=(-t "$IMAGE:latest")
-          docker buildx imagetools create "${tags[@]}" \
-            $(printf "$IMAGE@sha256:%s " *)
+          refs=()
+          for digest in *; do refs+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
